@@ -1,5 +1,5 @@
 {
-  "name": "simple-messenger",
+  "name": "messenger-app",
   "version": "1.0.0",
   "description": "Real-time messenger",
   "main": "server.js",
