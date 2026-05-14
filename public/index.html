@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>💬 Мессенджер</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     body { background: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
     .app { width: 95%; max-width: 1000px; height: 90vh; background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; overflow: hidden; }
     .sidebar { width: 300px; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
@@ -21,7 +21,7 @@
     .chat { flex: 1; display: flex; flex-direction: column; }
     .chat-header { padding: 20px; border-bottom: 1px solid #e0e0e0; font-weight: 600; }
     .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-    .msg { max-width: 70%; padding: 10px 15px; border-radius: 18px; font-size: 14px; }
+    .msg { max-width: 70%; padding: 10px 15px; border-radius: 18px; font-size: 14px; word-wrap: break-word; }
     .msg.sent { align-self: flex-end; background: #2196F3; color: white; }
     .msg.recv { align-self: flex-start; background: #e0e0e0; }
     .msg .time { font-size: 11px; opacity: 0.7; margin-top: 5px; }
@@ -73,30 +73,44 @@
   <script>
     let me = null, chatId = null, sock = null;
 
+    // Helper to get token from cookie
+    function getToken() {
+      const match = document.cookie.match(/token=([^;]+)/);
+      return match ? match[1] : null;
+    }
+
+    // Fetch wrapper with auth
+    async function fetchAuth(url, options = {}) {
+      const token = getToken();
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const res = await fetch(url, {
+        ...options,
+        headers: { ...headers, ...options.headers },
+        credentials: 'include'
+      });
+      return res;
+    }
+
     async function handleAuth() {
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value.trim();
       if (!username || !password) return alert('Заполните все поля');
 
-      let res = await fetch('/api/login', {
+      let res = await fetchAuth('/api/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-        credentials: 'include'
+        body: JSON.stringify({ username, password })
       });
 
       if (!res.ok) {
-        await fetch('/api/register', {
+        await fetchAuth('/api/register', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-          credentials: 'include'
+          body: JSON.stringify({ username, password })
         });
-        res = await fetch('/api/login', {
+        res = await fetchAuth('/api/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-          credentials: 'include'
+          body: JSON.stringify({ username, password })
         });
       }
 
@@ -110,8 +124,7 @@
     }
 
     function logout() {
-      fetch('/api/logout', { method: 'POST', credentials: 'include' })
-        .then(() => location.reload());
+      fetchAuth('/api/logout', { method: 'POST' }).then(() => location.reload());
     }
 
     async function init() {
@@ -119,21 +132,23 @@
       document.getElementById('main').classList.remove('hidden');
       document.getElementById('me').textContent = '👤 ' + me.username;
 
-      // Подключение к Socket.IO с polling
+      const token = getToken();
+      console.log('🍪 Token:', token ? token.substring(0, 20) + '...' : 'NONE');
+
       sock = io({
-        auth: { token: document.cookie.match(/token=([^;]+)/)?.[1] },
-        transports: ['polling'],
+        auth: { token: token || '' },
+        transports: ['polling', 'websocket'],
         reconnection: true,
         reconnectionDelay: 1000
       });
 
       sock.on('connect', () => {
-        console.log('✅ Connected:', sock.id);
+        console.log('✅ Socket connected:', sock.id);
         loadUsers();
       });
 
       sock.on('connect_error', (err) => {
-        console.error('❌ Connection error:', err.message);
+        console.error('❌ Socket error:', err.message);
       });
 
       sock.on('new_message', (msg) => {
@@ -142,7 +157,6 @@
           appendMessage(msg, false);
           sock.emit('mark_read', { senderId: msg.sender_id });
         } else {
-          // Уведомление
           if (Notification.permission === 'granted') {
             new Notification('💬 ' + msg.sender_name, { body: msg.content });
           }
@@ -162,7 +176,7 @@
     }
 
     async function loadUsers(q = '') {
-      const res = await fetch('/api/users?q=' + encodeURIComponent(q), { credentials: 'include' });
+      const res = await fetchAuth('/api/users?q=' + encodeURIComponent(q));
       const users = await res.json();
       const list = document.getElementById('ul');
       list.innerHTML = users.map(u => `
@@ -184,7 +198,7 @@
       document.querySelectorAll('.user').forEach(el => el.classList.remove('active'));
       event.currentTarget.classList.add('active');
 
-      const res = await fetch('/api/messages/' + userId, { credentials: 'include' });
+      const res = await fetchAuth('/api/messages/' + userId);
       const msgs = await res.json();
       document.getElementById('ml').innerHTML = '';
       msgs.forEach(m => appendMessage(m, m.sender_id === me.id));
@@ -204,9 +218,9 @@
     async function send() {
       const input = document.getElementById('mi');
       const content = input.value.trim();
-      if (!content) return;
+      if (!content || !chatId) return;
 
-      console.log('📤 Sending:', { receiverId: chatId, content });
+      console.log('📤 Sending to', chatId, ':', content);
       sock.emit('send_message', { receiverId: Number(chatId), content });
       input.value = '';
     }
