@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>💬 Мессенджер</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --bg: #f8fafc; --panel: #fff; --primary: #2563eb; --text: #0f172a;
+      --muted: #64748b; --border: #e2e8f0; --green: #22c55e; --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: var(--bg); height: 100vh; display: flex; justify-content: center; align-items: center; }
+    .app { width: 95%; max-width: 1100px; height: 90vh; background: var(--panel); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,.1); display: flex; overflow: hidden; }
+    .sidebar { width: 320px; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .search { padding: 0 16px 12px; }
+    .search input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; outline: none; }
+    .users { flex: 1; overflow-y: auto; }
+    .user { padding: 12px 16px; cursor: pointer; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); transition: .2s; }
+    .user:hover, .user.active { background: #f1f5f9; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+    .status { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; margin-left: auto; }
+    .status.online { background: var(--green); box-shadow: 0 0 0 2px #fff; }
+    .chat { flex: 1; display: flex; flex-direction: column; background: #fafbfc; }
+    .chat-header { padding: 16px; background: var(--panel); border-bottom: 1px solid var(--border); font-weight: 600; }
+    .messages { flex: 1; padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 75%; padding: 10px 14px; border-radius: 10px; position: relative; font-size: 14px; word-break: break-word; }
+    .msg.sent { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 2px; }
+    .msg.recv { align-self: flex-start; background: #e2e8f0; color: var(--text); border-bottom-left-radius: 2px; }
+    .msg img, .msg video { max-width: 100%; border-radius: 8px; margin-top: 6px; }
+    .msg a { color: #2563eb; text-decoration: underline; }
+    .meta { font-size: 11px; opacity: .8; margin-top: 4px; display: flex; justify-content: space-between; }
+    .input-area { padding: 12px; background: var(--panel); border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+    .input-area input { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 8px; outline: none; }
+    .btn { padding: 10px 14px; background: var(--primary); color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+    .btn:hover { opacity: .9; }
+    .btn.sm { padding: 6px 10px; font-size: 12px; background: #ef4444; }
+    .auth { position: fixed; inset: 0; background: var(--bg); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .auth-box { background: var(--panel); padding: 32px; border-radius: 16px; width: 320px; box-shadow: 0 8px 24px rgba(0,0,0,.1); }
+    .auth-box input { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Экран авторизации -->
+  <div id="auth" class="auth">
+    <div class="auth-box">
+      <h2 style="margin-bottom:16px">💬 Вход / Регистрация</h2>
+      <input id="username" placeholder="Имя пользователя">
+      <input id="password" type="password" placeholder="Пароль">
+      <button class="btn" onclick="handleAuth()" style="width:100%">Войти или Создать</button>
+      <p id="err" style="color:#ef4444;margin-top:8px;font-size:13px"></p>
+    </div>
+  </div>
+
+  <!-- Основной интерфейс -->
+  <div class="app hidden" id="main">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span id="me" style="font-weight:600"></span>
+        <button class="btn sm" onclick="logout()">Выйти</button>
+      </div>
+      <div class="search">
+        <input id="sq" placeholder="🔍 Поиск..." oninput="loadUsers(this.value)">
+      </div>
+      <div class="users" id="ul"></div>
+    </div>
+    <div class="chat">
+      <div class="chat-header" id="ct">Выберите собеседника</div>
+      <div class="messages" id="ml"></div>
+      <div class="input-area" id="ia" style="visibility:hidden">
+        <label for="fu" class="btn" style="padding:8px;cursor:pointer"><i class="fa fa-paperclip"></i></label>
+        <input type="file" id="fu" hidden onchange="upload(this)">
+        <input id="mi" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')send()">
+        <button class="btn" onclick="send()"><i class="fa fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const API = '';
+    let me = null, chatId = null, sock = null, pending = null;
+
+    // 🔐 Авторизация
+    async function handleAuth() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      if (!username || !password) return alert('Заполните все поля');
+
+      let res = await fetch(API + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      // Если логин не удался — пробуем зарегистрировать
+      if (!res.ok) {
+        await fetch(API + '/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        res = await fetch(API + '/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        document.getElementById('err').textContent = data.error;
+        return;
+      }
+      me = data;
+      init();
+    }
+
+    function logout() {
+      fetch(API + '/api/logout', { method: 'POST' }).then(() => location.reload());
+    }
+
+    function getCookie(name) {
+      return document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)')?.pop() || '';
+    }
+
+    // 🌐 Инициализация сокета
+    async function init() {
+      document.getElementById('auth').classList.add('hidden');
+      document.getElementById('main').classList.remove('hidden');
+      document.getElementById('me').textContent = '👤 ' + me.username;
+
+      sock = io({ auth: { token: getCookie('token') } });
+
+      sock.on('connect', () => loadUsers());
+      sock.on('user_status', updateStatus);
+      sock.on('new_message', handleIncomingMessage);
+      sock.on('messages_read', () => {});
+
+      loadUsers();
+    }
+
+    // 👥 Загрузка списка пользователей
+    async function loadUsers(q = '') {
+      const res = await fetch(API + '/api/users?q=' + encodeURIComponent(q));
+      const users = await res.json();
+      const list = document.getElementById('ul');
+      list.innerHTML = users.map(u => `
+        <div class="user" data-uid="${u.id}" onclick="openChat(${u.id}, '${u.username.replace(/'/g, "\\'")}')">
+          <div class="avatar">${u.username[0].toUpperCase()}</div>
+          <div style="flex:1">
+            <div style="font-weight:500">${u.username}</div>
+            <div style="font-size:12px;color:var(--muted)">
+              ${u.status === 'online' ? '🟢 В сети' : '⚫ Офлайн'}
+            </div>
+          </div>
+          <div class="status ${u.status}"></div>
+        </div>
+      `).join('');
+    }
+
+    // 💬 Открытие чата
+    async function openChat(userId, username) {
+      chatId = userId;
+      document.getElementById('ct').textContent = '💬 ' + username;
+      document.getElementById('ia').style.visibility = 'visible';
+      document.querySelectorAll('.user').forEach(el => el.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+
+      const res = await fetch(API + '/api/messages/' + userId);
+      const msgs = await res.json();
+      renderMessages(msgs);
+      sock.emit('mark_read', { senderId: userId });
+    }
+
+    // 📋 Рендер сообщений
+    function renderMessages(msgs) {
+      const container = document.getElementById('ml');
+      container.innerHTML = msgs.map(m => {
+        const isMe = m.sender_id === me.id;
+        const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        let content = '';
+        if (m.content) content += `<div>${m.content}</div>`;
+        if (m.file_path) {
+          if (m.file_type?.startsWith('image')) {
+            content += `<img src="${m.file_path}" onclick="window.open(this.src)" style="cursor:pointer">`;
+          } else if (m.file_type?.startsWith('video')) {
+            content += `<video controls src="${m.file_path}" style="max-height:200px"></video>`;
+          } else {
+            content += `<a href="${m.file_path}" target="_blank">📎 ${m.file_name || 'Файл'}</a>`;
+          }
+        }
+        const read = isMe || m.is_read ? '✅' : '⏳';
+        return `<div class="msg ${isMe ? 'sent' : 'recv'}">${content}
+          <div class="meta"><span>${time}</span><span>${isMe ? read : ''}</span></div>
+        </div>`;
+      }).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // 📤 Отправка сообщения
+    async function send() {
+      const input = document.getElementById('mi');
+      const content = input.value.trim();
+      if (!content && !pending) return;
+
+      sock.emit('send_message', {
+        receiverId: chatId,
+        content,
+        fileUrl: pending?.url,
+        fileType: pending?.type,
+        fileName: pending?.name
+      });
+      input.value = '';
+      pending = null;
+      input.placeholder = 'Сообщение...';
+    }
+
+    // 📎 Загрузка файла
+    async function upload(inp) {
+      if (!inp.files[0]) return;
+      const form = new FormData();
+      form.append('file', inp.files[0]);
+      const res = await fetch(API + '/api/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      pending = data;
+      inp.value = '';
+      document.getElementById('mi').placeholder = `📎 ${data.name} (нажмите отправить)`;
+    }
+
+    // 🔔 Обработка входящего сообщения
+    function handleIncomingMessage(msg) {
+      if (msg.sender_id === chatId) {
+        const container = document.getElementById('ml');
+        const msgs = Array.from(container.querySelectorAll('.msg')).map(el => ({
+          isMe: el.classList.contains('sent'),
+          content: el.innerHTML
+        }));
+        renderMessages([...msgs, msg].map((_, i) => msg)); // упрощённо
+        sock.emit('mark_read', { senderId: msg.sender_id });
+      } else {
+        // Уведомление (если есть разрешение)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('💬 Новое сообщение', { body: msg.content || '📎 Файл' });
+        }
+      }
+    }
+
+    // 🟢 Обновление статуса пользователя
+    function updateStatus({ userId, status }) {
+      const el = document.querySelector(`.user[data-uid="${userId}"] .status`);
+      if (el) el.className = `status ${status}`;
+    }
+
+    // Запрос разрешения на уведомления
+    window.onload = () => {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    };
+  </script>
+</body>
+</html>
