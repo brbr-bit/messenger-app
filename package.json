@@ -7,6 +7,9 @@
     "start": "node messenger.js",
     "dev": "node messenger.js"
   },
+   "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^9.4.0",
