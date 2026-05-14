@@ -1,6 +1,7 @@
 node_modules/
-uploads/
-chat.db*
-*.log
+*.db
+*.db-shm
+*.db-wal
 .env
+*.log
 .DS_Store
