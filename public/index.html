@@ -93,7 +93,8 @@
       let res = await fetch(API + '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
+        credentials: 'include'  // ✅ ИСПРАВЛЕНО
       });
 
       // Если логин не удался — пробуем зарегистрировать
@@ -101,12 +102,14 @@
         await fetch(API + '/api/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password }),
+          credentials: 'include'  // ✅ ИСПРАВЛЕНО
         });
         res = await fetch(API + '/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password }),
+          credentials: 'include'  // ✅ ИСПРАВЛЕНО
         });
       }
 
@@ -120,7 +123,8 @@
     }
 
     function logout() {
-      fetch(API + '/api/logout', { method: 'POST' }).then(() => location.reload());
+      fetch(API + '/api/logout', { method: 'POST', credentials: 'include' })  // ✅ ИСПРАВЛЕНО
+        .then(() => location.reload());
     }
 
     function getCookie(name) {
@@ -133,7 +137,7 @@
       document.getElementById('main').classList.remove('hidden');
       document.getElementById('me').textContent = '👤 ' + me.username;
 
-      sock = io({ auth: { token: getCookie('token') } });
+      sock = io({ auth: { token: getCookie('token') }, transports: ['websocket', 'polling'] });
 
       sock.on('connect', () => loadUsers());
       sock.on('user_status', updateStatus);
@@ -145,7 +149,7 @@
 
     // 👥 Загрузка списка пользователей
     async function loadUsers(q = '') {
-      const res = await fetch(API + '/api/users?q=' + encodeURIComponent(q));
+      const res = await fetch(API + '/api/users?q=' + encodeURIComponent(q), { credentials: 'include' });  // ✅ ИСПРАВЛЕНО
       const users = await res.json();
       const list = document.getElementById('ul');
       list.innerHTML = users.map(u => `
@@ -170,7 +174,7 @@
       document.querySelectorAll('.user').forEach(el => el.classList.remove('active'));
       event.currentTarget.classList.add('active');
 
-      const res = await fetch(API + '/api/messages/' + userId);
+      const res = await fetch(API + '/api/messages/' + userId, { credentials: 'include' });  // ✅ ИСПРАВЛЕНО
       const msgs = await res.json();
       renderMessages(msgs);
       sock.emit('mark_read', { senderId: userId });
@@ -225,7 +229,7 @@
       if (!inp.files[0]) return;
       const form = new FormData();
       form.append('file', inp.files[0]);
-      const res = await fetch(API + '/api/upload', { method: 'POST', body: form });
+      const res = await fetch(API + '/api/upload', { method: 'POST', body: form, credentials: 'include' });  // ✅ ИСПРАВЛЕНО
       const data = await res.json();
       pending = data;
       inp.value = '';
@@ -236,11 +240,11 @@
     function handleIncomingMessage(msg) {
       if (msg.sender_id === chatId) {
         const container = document.getElementById('ml');
-        const msgs = Array.from(container.querySelectorAll('.msg')).map(el => ({
+        const currentMsgs = Array.from(container.querySelectorAll('.msg')).map(el => ({
           isMe: el.classList.contains('sent'),
           content: el.innerHTML
         }));
-        renderMessages([...msgs, msg].map((_, i) => msg)); // упрощённо
+        renderMessages([...currentMsgs, msg]);
         sock.emit('mark_read', { senderId: msg.sender_id });
       } else {
         // Уведомление (если есть разрешение)
